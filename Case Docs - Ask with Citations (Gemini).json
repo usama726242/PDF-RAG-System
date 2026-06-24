@@ -1,0 +1,288 @@
+{
+  "name": "Case Docs - Ask with Citations (Gemini)",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "When Chat Message Received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -944,
+        1072
+      ],
+      "id": "57164ff5-1a83-4a1e-af87-775f7c6ee67f",
+      "webhookId": "ask-webhook-001"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('When Chat Message Received').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a legal research assistant for an attorney having an ongoing conversation about a case.\n\nFor every NEW factual question, you MUST call the case_documents_search tool to retrieve relevant excerpts from the case documents before answering. Do not rely on your training knowledge for case facts.\n\nYou MAY use the prior conversation history to:\n- Understand follow-up questions and pronouns (e.g. \"what about them?\", \"and the deadline?\")\n- Avoid asking the attorney to repeat context they already gave\n- Reformulate vague follow-ups into specific search queries before calling the tool\n\nRules:\n1. Ground every factual claim about the case in excerpts returned by the tool — not in prior conversation alone. Even when answering a follow-up, call the tool again with the resolved question.\n2. After every factual claim, cite inline as (source: <filename>) using the source metadata of the excerpt.\n3. If the tool returns nothing relevant, reply exactly: \"Not found in the indexed case documents.\" Do not speculate.\n4. Paraphrase in your own words. Quote sparingly.\n5. Do not give legal advice or strategic recommendations. Report only what the documents say.\n6. Be concise, factual, neutral. Address the attorney directly.\nRules:\n1. Answer using ONLY excerpts returned by the tool.\n2. After every factual claim, cite inline as (source: <filename>) using the source metadata of the excerpt.\n3. If the tool returns nothing relevant, reply exactly: \"Not found in the indexed case documents.\" Do not speculate.\n4. Paraphrase in your own words. Quote sparingly.\n5. Do not give legal advice. Report only what the documents say.\n6. Be concise, factual, neutral."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -432,
+        656
+      ],
+      "id": "c00667e1-5b7e-44e6-a09c-9e098133748b",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        1088
+      ],
+      "id": "21864475-b97c-4954-bce6-9de533232dfb",
+      "name": "Embeddings Google Gemini",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LtrylQ8wcvDKGhu7",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Search the case document collection for excerpts relevant to the user's question. The `input` parameter must contain the search query in natural language. Returns text excerpts with their source filename in metadata.",
+        "chromaCollection": {
+          "__rl": true,
+          "value": "case_folder",
+          "mode": "list",
+          "cachedResultName": "case_folder"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreChromaDB",
+      "typeVersion": 1.3,
+      "position": [
+        -240,
+        880
+      ],
+      "id": "3648c587-1ad0-493d-910a-78f41d5f7a70",
+      "name": "Case Document Search",
+      "credentials": {
+        "chromaSelfHostedApi": {
+          "id": "UCZoiel4m6XnhxXu",
+          "name": "ChromaDB Self-Hosted account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ae71e069-b23f-480c-919f-6187f8eb3c04",
+              "name": "Output",
+              "value": "Sorry, I couldn't search the case documents right now. The retrieval service may be temporarily unavailable — please try again in a moment.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        128,
+        864
+      ],
+      "id": "171ee16f-a419-49af-aead-8b8dba89f999",
+      "name": "Fallback Response"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/v2/heartbeat",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -720,
+        1072
+      ],
+      "id": "81820788-4a49-4720-938b-163c6478d4cc",
+      "name": "Check Chroma",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bac62565-cfe8-4e9f-aaca-65596d043dab",
+              "name": "output",
+              "value": "The case document database is currently offline.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -288,
+        1264
+      ],
+      "id": "83c38c44-4c62-4be8-934c-9177eab038ef",
+      "name": "Chroma Offline response"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('When Chat Message Received').item.json.sessionId }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        -368,
+        880
+      ],
+      "id": "66b32574-263a-465c-89a0-a9212521086a",
+      "name": "Simple Memory",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -496,
+        880
+      ],
+      "id": "58811b60-9b6a-4e7d-9819-f5dfb7716957",
+      "name": "Google Gemini Chat Model",
+      "notesInFlow": false,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LtrylQ8wcvDKGhu7",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Chat Message Received": {
+      "main": [
+        [
+          {
+            "node": "Check Chroma",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Fallback Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Case Document Search",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Case Document Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Chroma": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Chroma Offline response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ec9db610-9f3e-4170-b69d-7c10ebcafae3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "df18bf4939f23116e9d94f7f2644889dc594c54f15270369e49e4c9e6f21de88"
+  },
+  "nodeGroups": [],
+  "id": "KTYB9ZzpbAV0D77f",
+  "tags": []
+}
